@@ -1,0 +1,104 @@
+name: Build and Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The apple/swift-syntax version to build and publish as a prebuilt binary'
+        required: true
+        type: string
+      build_number:
+        description: 'An optional build number to suffix the release tag with (e.g. "3" -> "1.0.0+3")'
+        required: false
+        type: string
+      xcode_version:
+        description: 'The Xcode version to use for building'
+        required: true
+        default: '16.2'
+        type: string
+      macos_version:
+        description: 'The minimum macOS version to support'
+        required: true
+        default: '13.0'
+        type: string
+      rules_swift_version:
+        description: 'The version of rules_swift to use for the release archive MODULE'
+        required: true
+        default: '2.4.0'
+        type: string
+
+jobs:
+  build-publish:
+    runs-on: ["self-hosted","macOS","ARM64","local-cache"]
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      XCODE_VERSION: ${{ github.event.inputs.xcode_version }}
+      RULES_SWIFT_VERSION: ${{ github.event.inputs.rules_swift_version }}
+      MACOS_VERSION: ${{ github.event.inputs.macos_version }}
+    steps:
+      - name: Install brew dependencies
+        run: |
+          brew install buildozer
+      - name: Select Xcode ${{ env.XCODE_VERSION }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+      - name: Clone repo
+        uses: actions/checkout@v4
+      - name: Clone SwiftSyntax
+        run: |
+          gh repo clone apple/swift-syntax -- \
+            --depth 1 \
+            --branch ${{ github.event.inputs.tag }} \
+            --single-branch
+      - name: Build & Publish SwiftSyntax prebuilt binary
+        run: |
+          set -euo pipefail
+
+          release_tag="${{ github.event.inputs.tag }}"
+          if [ -n "${{ github.event.inputs.build_number }}" ]; then
+            release_tag="$release_tag+${{ github.event.inputs.build_number }}"
+          fi
+
+          archive_name="swift-syntax-$release_tag"
+
+          # Run the build and create the archive
+          SWIFT_SYNTAX_VERSION=${{ github.event.inputs.tag }} \
+          RULES_SWIFT_VERSION=${{ env.RULES_SWIFT_VERSION }} \
+          MACOS_VERSION=${{ env.MACOS_VERSION }} \
+          BUILD_NUMBER=${{ github.event.inputs.build_number }} \
+          ./build.sh
+          bzlmod_sha256=$(cat "${archive_name}.tar.gz.sha256")
+
+          # Make the release notes
+          cat > release-notes.md <<EOF
+          # SwiftSyntax Prebuilt $release_tag
+
+          This release contains the pre-built binaries for SwiftSyntax \`${{ github.event.inputs.tag }}\`.
+
+          Built with:
+            - Xcode \`${{ env.XCODE_VERSION }}\`
+            - macOS \`${{ env.MACOS_VERSION }}\`
+
+          Supported architectures:
+            - arm64
+
+          Dependencies:
+            - [rules_swift](https://github.com/bazelbuild/rules_swift) \`${{ env.RULES_SWIFT_VERSION }}\`
+
+          Use in your \`MODULE.bazel\` file with \`archive_override\`:
+
+            \`\`\`starlark
+            archive_override(
+                module_name = "swift-syntax",
+                integrity = "$bzlmod_sha256",
+                strip_prefix = "swift-syntax-$release_tag",
+                urls = ["https://github.com/wesprint-io/swift-syntax-prebuilt/releases/download/$release_tag/swift-syntax-$release_tag.tar.gz"],
+            )
+            \`\`\`
+          EOF
+
+          # Publish the tarball to GitHub Releases.
+          gh release create "$release_tag" \
+            --title "swift-syntax-prebuilt version $release_tag" \
+            --notes-file release-notes.md \
+            "${archive_name}.tar.gz" \
+            "${archive_name}.tar.gz.sha256"

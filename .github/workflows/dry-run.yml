@@ -1,0 +1,48 @@
+name: Dry run
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  dry-run:
+    runs-on: ["self-hosted","macOS","ARM64","local-cache"]
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SWIFT_SYNTAX_VERSION: 600.0.1
+      XCODE_VERSION: 16.2
+      RULES_SWIFT_VERSION: 2.4.0
+      MACOS_VERSION: 13.0
+    steps:
+      - name: Install brew dependencies
+        run: |
+          brew install buildozer
+      - name: Select Xcode ${{ env.XCODE_VERSION }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+      - name: Clone repo
+        uses: actions/checkout@v4
+      - name: Clone SwiftSyntax
+        run: |
+          gh repo clone apple/swift-syntax -- \
+            --depth 1 \
+            --branch ${{ env.SWIFT_SYNTAX_VERSION }} \
+            --single-branch
+      - name: Build & Publish SwiftSyntax prebuilt binary
+        run: |
+          set -euo pipefail
+
+          # Run the build and create the archive
+          SWIFT_SYNTAX_VERSION=${{ env.SWIFT_SYNTAX_VERSION }} \
+          RULES_SWIFT_VERSION=${{ env.RULES_SWIFT_VERSION }} \
+          MACOS_VERSION=${{ env.MACOS_VERSION }} \
+          ./build.sh
+      - name: Upload SwiftSyntax prebuilt binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-syntax
+          path: |
+            swift-syntax-${{ env.SWIFT_SYNTAX_VERSION }}.tar.gz
+            swift-syntax-${{ env.SWIFT_SYNTAX_VERSION }}.tar.gz.sha256
+          if-no-files-found: error
+
