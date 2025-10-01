@@ -49,6 +49,11 @@ jobs:
             --depth 1 \
             --branch ${{ github.event.inputs.tag }} \
             --single-branch
+      - name: Apply patches for 601.0.1
+        if: github.event.inputs.tag == '601.0.1'
+        run: |
+          cd swift-syntax
+          git apply ../patches/*.patch
       - name: Build & Publish SwiftSyntax prebuilt binary
         run: |
           set -euo pipefail
