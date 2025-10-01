@@ -39,7 +39,7 @@ bazel_dep(
 bazel_dep(
     name = "rules_swift",
     version = "$RULES_SWIFT_VERSION",
-    max_compatibility_level = 2,
+    max_compatibility_level = 3,
     repo_name = "build_bazel_rules_swift",
 )
 EOF
