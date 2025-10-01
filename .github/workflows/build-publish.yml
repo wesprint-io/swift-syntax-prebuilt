@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The apple/swift-syntax version to build and publish as a prebuilt binary'
+        description: 'The swiftlang/swift-syntax version to build and publish as a prebuilt binary'
         required: true
         type: string
       build_number:
@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Clone SwiftSyntax
         run: |
-          gh repo clone apple/swift-syntax -- \
+          gh repo clone swiftlang/swift-syntax -- \
             --depth 1 \
             --branch ${{ github.event.inputs.tag }} \
             --single-branch
