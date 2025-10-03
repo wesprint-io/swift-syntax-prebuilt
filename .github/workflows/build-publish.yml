@@ -29,7 +29,7 @@ on:
 
 jobs:
   build-publish:
-    runs-on: ["self-hosted","macOS","ARM64","local-cache"]
+    runs-on: ["namespace-profile-macos"]
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       XCODE_VERSION: ${{ github.event.inputs.xcode_version }}
