@@ -1,0 +1,51 @@
+diff --git a/.bazelversion b/.bazelversion
+index a8907c0..acd405b 100644
+--- a/.bazelversion
++++ b/.bazelversion
+@@ -1 +1 @@
+-7.0.2
++8.6.0
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 1f548b9..b808d51 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -43,6 +43,7 @@ swift_syntax_library(
+     name = "SwiftCompilerPluginMessageHandling",
+     deps = [
+         ":SwiftDiagnostics",
++        ":SwiftIfConfig",
+         ":SwiftOperators",
+         ":SwiftParser",
+         ":SwiftSyntax",
+@@ -291,6 +292,7 @@ swift_syntax_library(
+     name = "SwiftSyntaxMacroExpansion",
+     deps = [
+         ":SwiftDiagnostics",
++        ":SwiftIfConfig",
+         ":SwiftOperators",
+         ":SwiftSyntax",
+         ":SwiftSyntaxBuilder",
+@@ -317,6 +319,7 @@ swift_syntax_library(
+     name = "SwiftSyntaxMacros",
+     deps = [
+         ":SwiftDiagnostics",
++        ":SwiftIfConfig",
+         ":SwiftParser",
+         ":SwiftSyntax",
+         ":SwiftSyntaxBuilder",
+@@ -329,6 +332,7 @@ swift_syntax_library(
+     deps = [
+         ":SwiftDiagnostics",
+         ":SwiftIDEUtils",
++        ":SwiftIfConfig",
+         ":SwiftParser",
+         ":SwiftSyntaxMacroExpansion",
+         ":SwiftSyntaxMacros",
+@@ -340,6 +344,7 @@ swift_syntax_library(
+     name = "SwiftSyntaxMacrosTestSupport",
+     testonly = True,
+     deps = [
++        ":SwiftIfConfig",
+         ":SwiftSyntax",
+         ":SwiftSyntaxMacroExpansion",
+         ":SwiftSyntaxMacros",

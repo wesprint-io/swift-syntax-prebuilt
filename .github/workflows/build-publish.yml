@@ -49,11 +49,27 @@ jobs:
             --depth 1 \
             --branch ${{ github.event.inputs.tag }} \
             --single-branch
-      - name: Apply patches for 601.0.1
-        if: github.event.inputs.tag == '601.0.1'
+      - name: Apply version patches
+        shell: bash
         run: |
+          patch_dir="patches/${{ github.event.inputs.tag }}"
+          if [ ! -d "$patch_dir" ]; then
+            echo "No patches for ${{ github.event.inputs.tag }}"
+            exit 0
+          fi
+
+          mapfile -t patches < <(find "$patch_dir" -type f -name '*.patch' | sort)
+          if [ ${#patches[@]} -eq 0 ]; then
+            echo "No patches for ${{ github.event.inputs.tag }}"
+            exit 0
+          fi
+
+          repo_root="$PWD"
           cd swift-syntax
-          git apply ../patches/*.patch
+          for patch in "${patches[@]}"; do
+            echo "Applying $(basename "$patch")"
+            git apply "$repo_root/$patch"
+          done
       - name: Build & Publish SwiftSyntax prebuilt binary
         run: |
           set -euo pipefail

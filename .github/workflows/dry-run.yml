@@ -28,6 +28,29 @@ jobs:
             --depth 1 \
             --branch ${{ env.SWIFT_SYNTAX_VERSION }} \
             --single-branch
+      - name: Apply version patches
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          patch_dir="patches/${{ env.SWIFT_SYNTAX_VERSION }}"
+          if [ ! -d "$patch_dir" ]; then
+            echo "No patches for ${{ env.SWIFT_SYNTAX_VERSION }}"
+            exit 0
+          fi
+
+          mapfile -t patches < <(find "$patch_dir" -type f -name '*.patch' | sort)
+          if [ ${#patches[@]} -eq 0 ]; then
+            echo "No patches for ${{ env.SWIFT_SYNTAX_VERSION }}"
+            exit 0
+          fi
+
+          repo_root="$PWD"
+          cd swift-syntax
+          for patch in "${patches[@]}"; do
+            echo "Applying $(basename "$patch")"
+            git apply "$repo_root/$patch"
+          done
       - name: Build & Publish SwiftSyntax prebuilt binary
         run: |
           set -euo pipefail
@@ -45,4 +68,3 @@ jobs:
             swift-syntax-${{ env.SWIFT_SYNTAX_VERSION }}.tar.gz
             swift-syntax-${{ env.SWIFT_SYNTAX_VERSION }}.tar.gz.sha256
           if-no-files-found: error
-
