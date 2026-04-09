@@ -72,3 +72,12 @@ index 1f548b9b..b808d513 100644
          ":SwiftSyntax",
          ":SwiftSyntaxMacroExpansion",
          ":SwiftSyntaxMacros",
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 25576534..036ddbbe 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -24,3 +24,4 @@ bazel_dep(
+   max_compatibility_level = 3,
+   repo_name = "build_bazel_rules_swift",
+ )
++bazel_dep(name = "rules_cc", version = "0.2.17")
