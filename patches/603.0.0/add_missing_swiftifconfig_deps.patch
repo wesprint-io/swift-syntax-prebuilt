@@ -1,12 +1,35 @@
+diff --git a/.bazelrc b/.bazelrc
+index 1d851908..081146c3 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -10,17 +10,13 @@
+ ##
+ ##===----------------------------------------------------------------------===##
+ 
+-common --enable_bzlmod
+-common --incompatible_disallow_empty_glob
+-common --incompatible_use_host_features
+ common --lockfile_mode=off
+ 
+ build --features=swift.use_explicit_swift_module_map
+ build --host_features=swift.use_explicit_swift_module_map
+ 
+ # Improved build performance
+-build --host_swiftcopt=-whole-module-optimization
+-build --swiftcopt=-whole-module-optimization
++build                       --@build_bazel_rules_swift//swift:copt=-whole-module-optimization
+ 
+ # Keep in sync with Package.swift
+ build --host_macos_minimum_os=10.15
 diff --git a/.bazelversion b/.bazelversion
-index a8907c0..acd405b 100644
+index a8907c02..acd405b1 100644
 --- a/.bazelversion
 +++ b/.bazelversion
 @@ -1 +1 @@
 -7.0.2
 +8.6.0
 diff --git a/BUILD.bazel b/BUILD.bazel
-index 1f548b9..b808d51 100644
+index 1f548b9b..b808d513 100644
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
 @@ -43,6 +43,7 @@ swift_syntax_library(
