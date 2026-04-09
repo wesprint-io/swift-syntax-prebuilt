@@ -21,6 +21,7 @@ fi
 archive_name="swift-syntax-$release_tag"
 archs=("arm64")
 
+rm -rf "$archive_name" "${archive_name}.tar.gz" "${archive_name}.tar.gz.sha256"
 mkdir -p "$archive_name"
 
 # Create the MODULE.bazel file which will be used to include SwiftSyntax as a bazel_dep via archive_override.
@@ -47,6 +48,7 @@ EOF
 # Create the BUILD file which will be used to include the exposed targets.
 cat >"$archive_name/BUILD.bazel" <<EOF
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_import")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
 
 config_setting(
     name = "darwin_x86_64",
@@ -86,9 +88,30 @@ build_flags=(
 # The cquery output looks like: `//:SwiftBasicFormat_opt (5d78ae7)` and we take just the label.
 labels=($(bazel cquery "filter(_opt, //...)" "${build_flags[@]}" | sed 's/ (.*//'))
 
-# Shims are included as cc_libraries but don't need to be exposed when already built, so filter those out
-# The cquery output looks like: `//:_SwiftSyntaxCShims (7a8c846)` so we take the label and remove its `//` prefix
-ignore_deps=($(bazel cquery "kind(cc_library, //...)" "${build_flags[@]}" | sed 's/ (.*//' | sed 's/\/\///' | uniq))
+# C shims are cc_libraries. Keep archive-producing shims as cc_import targets
+# because SwiftSyntax's static archive has unresolved symbols from them.
+cc_labels=($(bazel cquery "kind(cc_library, deps(set(${labels[@]})))" "${build_flags[@]}" | sed 's/ (.*//' | grep '^//:' | uniq || true))
+archive_cc_labels=()
+ignore_deps=()
+
+for cc_label in ${cc_labels[@]}; do
+  cc_name=$(buildozer "print name" "$cc_label")
+  cc_srcs=$(buildozer "print srcs" "$cc_label" 2>/dev/null | sed 's/^\[//' | sed 's/\]$//' || true)
+  relative_label=$(echo "$cc_label" | sed 's/\/\///')
+
+  if [ -z "$cc_srcs" ] || [ "$cc_srcs" == "(missing)" ]; then
+    ignore_deps+=("$relative_label")
+    continue
+  fi
+
+  archive_cc_labels+=("$cc_label")
+
+  pushd "../$archive_name"
+  buildozer "new cc_import ${cc_name}" //:__pkg__ >/dev/null
+  buildozer "set visibility \"//visibility:public\"" //:${cc_name} >/dev/null
+  buildozer "set_select static_library :darwin_arm64 \"arm64/lib${cc_name}.a\"" //:${cc_name} >/dev/null
+  popd
+done
 
 # Create the BUILD file for each of the swift-syntax targets.
 for label in ${labels[@]}; do
@@ -98,7 +121,9 @@ for label in ${labels[@]}; do
   dependencies=$(buildozer "print deps" $non_opt_label | sed 's/^\[//' | sed 's/\]$//')
 
   # remove ignore_deps from the query results
-  for item in "${ignore_deps[@]}"; { dependencies=${dependencies//$item/}; }
+  if [ "${#ignore_deps[@]}" -gt 0 ]; then
+    for item in "${ignore_deps[@]}"; { dependencies=${dependencies//$item/}; }
+  fi
 
   # Create the `swift_import` target for this module.
   # Do this in the directory to make it easier to use buildozer with labels.
@@ -134,10 +159,20 @@ done
 for arch in ${archs[@]}; do
   arch_flags=("--cpu=darwin_${arch}")
   outputs=$(bazel cquery "set(${labels[@]})" --output=files "${build_flags[@]}" "${arch_flags[@]}")
+  if [ "${#archive_cc_labels[@]}" -gt 0 ]; then
+    outputs+=$'\n'$(bazel cquery "set(${archive_cc_labels[@]})" --output=files "${build_flags[@]}" "${arch_flags[@]}")
+  fi
   bazel build "${labels[@]}" "${build_flags[@]}" "${arch_flags[@]}" >/dev/null
+  if [ "${#archive_cc_labels[@]}" -gt 0 ]; then
+    bazel build "${archive_cc_labels[@]}" "${build_flags[@]}" "${arch_flags[@]}" >/dev/null
+  fi
 
   # Copy the build product files to the archive directory within a subdirectory for the architecture.
   for output in $outputs; do
+    if [ ! -e "$output" ]; then
+      continue
+    fi
+
     if [[ $output == *.swiftinterface || $output == *.private.swiftinterface || $output == *.a || $output == *.swiftdoc ]]; then
       output_name=$(basename "$output")
       archive_dir_path="../${archive_name}/${arch}"
