@@ -7,7 +7,7 @@ set -euo pipefail
 #
 # Required environment variables:
 #   - SWIFT_SYNTAX_VERSION: The version of SwiftSyntax to build.
-#   - RULES_SWIFT_VERSION: The version of rules_swift to use for the archive MODULE.bazel file.
+#   - RULES_SWIFT_VERSION: The version of rules_swift to request for compilation and the archive MODULE.bazel file.
 #   - MACOS_VERSION: The minimum macOS version to target.
 #
 # Optional environment variables:
@@ -15,7 +15,7 @@ set -euo pipefail
 
 release_tag="$SWIFT_SYNTAX_VERSION"
 if [ -n "${BUILD_NUMBER:-}" ]; then
-  release_tag="$release_tag+$BUILD_NUMBER"
+	release_tag="$release_tag+$BUILD_NUMBER"
 fi
 
 archive_name="swift-syntax-$release_tag"
@@ -71,16 +71,27 @@ EOF
 # -- start swift-syntax build --
 pushd swift-syntax
 
+# Apply the requested rules_swift version to the source build as well as the archive.
+# Buildozer returns 3 when the version already matches.
+buildozer "set version $RULES_SWIFT_VERSION" //MODULE.bazel:rules_swift ||
+	{
+		status=$?
+		[ "$status" -eq 3 ] || exit "$status"
+	}
+
 # Shared build flags:
 #  - set the minimum macOS version to the version specified in the workflow input
 #  - set the host macOS version to the version specified in the workflow input
 #  - enable library evolution
+#  - explicitly use Swift 5 language mode when emitting interfaces; consumers can use Swift 5 or 6
 build_flags=(
-  --macos_minimum_os="$MACOS_VERSION"
-  --host_macos_minimum_os="$MACOS_VERSION"
-  --features="swift.enable_library_evolution"
-  --features="swift.emit_swiftinterface"
-  --features="swift.emit_private_swiftinterface"
+	--macos_minimum_os="$MACOS_VERSION"
+	--host_macos_minimum_os="$MACOS_VERSION"
+	--features="swift.enable_library_evolution"
+	--features="swift.emit_swiftinterface"
+	--features="swift.emit_private_swiftinterface"
+	--@build_bazel_rules_swift//swift:copt=-swift-version
+	--@build_bazel_rules_swift//swift:copt=5
 )
 
 # Collect the labels for the targets that will be exported.
@@ -95,92 +106,92 @@ archive_cc_labels=()
 ignore_deps=()
 
 for cc_label in ${cc_labels[@]}; do
-  cc_name=$(buildozer "print name" "$cc_label")
-  cc_srcs=$(buildozer "print srcs" "$cc_label" 2>/dev/null | sed 's/^\[//' | sed 's/\]$//' || true)
-  relative_label=$(echo "$cc_label" | sed 's/\/\///')
+	cc_name=$(buildozer "print name" "$cc_label")
+	cc_srcs=$(buildozer "print srcs" "$cc_label" 2>/dev/null | sed 's/^\[//' | sed 's/\]$//' || true)
+	relative_label=$(echo "$cc_label" | sed 's/\/\///')
 
-  if [ -z "$cc_srcs" ] || [ "$cc_srcs" == "(missing)" ]; then
-    ignore_deps+=("$relative_label")
-    continue
-  fi
+	if [ -z "$cc_srcs" ] || [ "$cc_srcs" == "(missing)" ]; then
+		ignore_deps+=("$relative_label")
+		continue
+	fi
 
-  archive_cc_labels+=("$cc_label")
+	archive_cc_labels+=("$cc_label")
 
-  pushd "../$archive_name"
-  buildozer "new cc_import ${cc_name}" //:__pkg__ >/dev/null
-  buildozer "set visibility \"//visibility:public\"" //:${cc_name} >/dev/null
-  buildozer "set_select static_library :darwin_arm64 \"arm64/lib${cc_name}.a\"" //:${cc_name} >/dev/null
-  popd
+	pushd "../$archive_name"
+	buildozer "new cc_import ${cc_name}" //:__pkg__ >/dev/null
+	buildozer "set visibility \"//visibility:public\"" //:${cc_name} >/dev/null
+	buildozer "set_select static_library :darwin_arm64 \"arm64/lib${cc_name}.a\"" //:${cc_name} >/dev/null
+	popd
 done
 
 # Create the BUILD file for each of the swift-syntax targets.
 for label in ${labels[@]}; do
-  # Collect information about the target, we need deps to be propagated to downstream targets.
-  non_opt_label=$(echo $label | sed 's/_opt$//')
-  module_name=$(buildozer "print name" $non_opt_label)
-  dependencies=$(buildozer "print deps" $non_opt_label | sed 's/^\[//' | sed 's/\]$//')
+	# Collect information about the target, we need deps to be propagated to downstream targets.
+	non_opt_label=$(echo $label | sed 's/_opt$//')
+	module_name=$(buildozer "print name" $non_opt_label)
+	dependencies=$(buildozer "print deps" $non_opt_label | sed 's/^\[//' | sed 's/\]$//')
 
-  # remove ignore_deps from the query results
-  if [ "${#ignore_deps[@]}" -gt 0 ]; then
-    for item in "${ignore_deps[@]}"; { dependencies=${dependencies//$item/}; }
-  fi
+	# remove ignore_deps from the query results
+	if [ "${#ignore_deps[@]}" -gt 0 ]; then
+		for item in "${ignore_deps[@]}"; do dependencies=${dependencies//$item/}; done
+	fi
 
-  # Create the `swift_import` target for this module.
-  # Do this in the directory to make it easier to use buildozer with labels.
-  pushd "../$archive_name"
-  buildozer "new swift_import ${module_name}" //:__pkg__ >/dev/null
-  buildozer "set module_name \"${module_name}\"" //:${module_name} >/dev/null
-  buildozer "set visibility \"//visibility:public\"" //:${module_name} >/dev/null
-  buildozer "set_select archives :darwin_arm64 \"arm64/lib${module_name}.a\"" //:${module_name} >/dev/null
-  buildozer "set_select swiftdoc :darwin_arm64 \"arm64/${module_name}.swiftdoc\"" //:${module_name} >/dev/null
+	# Create the `swift_import` target for this module.
+	# Do this in the directory to make it easier to use buildozer with labels.
+	pushd "../$archive_name"
+	buildozer "new swift_import ${module_name}" //:__pkg__ >/dev/null
+	buildozer "set module_name \"${module_name}\"" //:${module_name} >/dev/null
+	buildozer "set visibility \"//visibility:public\"" //:${module_name} >/dev/null
+	buildozer "set_select archives :darwin_arm64 \"arm64/lib${module_name}.a\"" //:${module_name} >/dev/null
+	buildozer "set_select swiftdoc :darwin_arm64 \"arm64/${module_name}.swiftdoc\"" //:${module_name} >/dev/null
 
-  # Use the .private.swiftinterface file as the swiftinterface for the `SwiftSyntax` target.
-  # This allows SwiftLint to use `@_spi`.
-  if [ "$module_name" == "SwiftSyntax" ]; then
-    buildozer "set_select swiftinterface :darwin_arm64 \"arm64/${module_name}.private.swiftinterface\"" //:${module_name} >/dev/null
-  else
-    buildozer "set_select swiftinterface :darwin_arm64 \"arm64/${module_name}.swiftinterface\"" //:${module_name} >/dev/null
-  fi
+	# Use the .private.swiftinterface file as the swiftinterface for the `SwiftSyntax` target.
+	# This allows SwiftLint to use `@_spi`.
+	if [ "$module_name" == "SwiftSyntax" ]; then
+		buildozer "set_select swiftinterface :darwin_arm64 \"arm64/${module_name}.private.swiftinterface\"" //:${module_name} >/dev/null
+	else
+		buildozer "set_select swiftinterface :darwin_arm64 \"arm64/${module_name}.swiftinterface\"" //:${module_name} >/dev/null
+	fi
 
-  if [ -n "$dependencies" ]; then
-    buildozer "set deps ${dependencies[*]}" //:${module_name} >/dev/null
-  fi
+	if [ -n "$dependencies" ]; then
+		buildozer "set deps ${dependencies[*]}" //:${module_name} >/dev/null
+	fi
 
-  # Create the alias `_opt` for the `swift_import` target that is used by some other modules.
-  # Since these are prebuilt in a release configuration, they are always in "opt" mode.
-  buildozer "new alias ${module_name}_opt" //:__pkg__ >/dev/null
-  buildozer "set actual :${module_name}" //:${module_name}_opt >/dev/null
-  buildozer "set visibility \"//visibility:public\"" //:${module_name}_opt >/dev/null
+	# Create the alias `_opt` for the `swift_import` target that is used by some other modules.
+	# Since these are prebuilt in a release configuration, they are always in "opt" mode.
+	buildozer "new alias ${module_name}_opt" //:__pkg__ >/dev/null
+	buildozer "set actual :${module_name}" //:${module_name}_opt >/dev/null
+	buildozer "set visibility \"//visibility:public\"" //:${module_name}_opt >/dev/null
 
-  popd
+	popd
 done
 
 # Build the module for each architecture we suppport.
 for arch in ${archs[@]}; do
-  arch_flags=("--cpu=darwin_${arch}")
-  outputs=$(bazel cquery "set(${labels[@]})" --output=files "${build_flags[@]}" "${arch_flags[@]}")
-  if [ "${#archive_cc_labels[@]}" -gt 0 ]; then
-    outputs+=$'\n'$(bazel cquery "set(${archive_cc_labels[@]})" --output=files "${build_flags[@]}" "${arch_flags[@]}")
-  fi
-  bazel build "${labels[@]}" "${build_flags[@]}" "${arch_flags[@]}" >/dev/null
-  if [ "${#archive_cc_labels[@]}" -gt 0 ]; then
-    bazel build "${archive_cc_labels[@]}" "${build_flags[@]}" "${arch_flags[@]}" >/dev/null
-  fi
+	arch_flags=("--cpu=darwin_${arch}")
+	outputs=$(bazel cquery "set(${labels[@]})" --output=files "${build_flags[@]}" "${arch_flags[@]}")
+	if [ "${#archive_cc_labels[@]}" -gt 0 ]; then
+		outputs+=$'\n'$(bazel cquery "set(${archive_cc_labels[@]})" --output=files "${build_flags[@]}" "${arch_flags[@]}")
+	fi
+	bazel build "${labels[@]}" "${build_flags[@]}" "${arch_flags[@]}" >/dev/null
+	if [ "${#archive_cc_labels[@]}" -gt 0 ]; then
+		bazel build "${archive_cc_labels[@]}" "${build_flags[@]}" "${arch_flags[@]}" >/dev/null
+	fi
 
-  # Copy the build product files to the archive directory within a subdirectory for the architecture.
-  for output in $outputs; do
-    if [ ! -e "$output" ]; then
-      continue
-    fi
+	# Copy the build product files to the archive directory within a subdirectory for the architecture.
+	for output in $outputs; do
+		if [ ! -e "$output" ]; then
+			continue
+		fi
 
-    if [[ $output == *.swiftinterface || $output == *.private.swiftinterface || $output == *.a || $output == *.swiftdoc ]]; then
-      output_name=$(basename "$output")
-      archive_dir_path="../${archive_name}/${arch}"
-      mkdir -p "$archive_dir_path"
-      archive_path="$archive_dir_path/${output_name}"
-      cp -R "$output" "$archive_path"
-    fi
-  done
+		if [[ $output == *.swiftinterface || $output == *.private.swiftinterface || $output == *.a || $output == *.swiftdoc ]]; then
+			output_name=$(basename "$output")
+			archive_dir_path="../${archive_name}/${arch}"
+			mkdir -p "$archive_dir_path"
+			archive_path="$archive_dir_path/${output_name}"
+			cp -R "$output" "$archive_path"
+		fi
+	done
 done
 
 popd
